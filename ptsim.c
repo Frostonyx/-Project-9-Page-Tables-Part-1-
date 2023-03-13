@@ -45,61 +45,55 @@ unsigned char get_page_table(int proc_num)
 // Allocate pages for a new process
 //
 // This includes the new process page table and page_count data pages.
-//
+int GetAddress(page, offset)
+{
+    return page * PAGE_SIZE + offset;
+}
+
+int AllocatePage() {
+    // Loop through the used page array in zero page
+    for (int i = 0; i < PAGE_COUNT; i++) {
+        // Check if the page is unused
+        if (mem[i] == 0) {
+            // Mark the page as used and return its number
+            mem[i] = 1;
+            return i;
+        }
+    }
+    // Return an error code indicating no free pages
+    return 0xff; // indicating no free pages
+}
+
 void new_process(int proc_num, int page_count)
 {
-    // Allocate a page for the new process's page table
-    int pt_page = 0;
-    for (int i = 1; i < PAGE_COUNT; i++) {
-        int addr = get_address(i, 0);
-        if (mem[addr] == 0) {
-            mem[addr] = 1;  // Mark the page as allocated
-            pt_page = i;
-            break;
-        }
+    // Allocate a page for the page table
+    int page_table = AllocatePage();
+
+    // Check if allocation failed
+    if (page_table == -1) {
+        printf("OOM: proc %d: page table\n", proc_num);
+        return;
     }
 
-    // Check that we found a page for the page table
-    assert(pt_page != 0);
+    // Set the page table pointer in zero page
+    mem[64 + proc_num] = page_table;
 
-    // Initialize the page table to all zeros
-    for (int i = 0; i < PAGE_COUNT; i++) {
-        int addr = get_address(pt_page, i);
-        mem[addr] = 0;
-    }
-
-    // Set the page table pointer for the new process
-    int ptp_addr = get_address(0, PTP_OFFSET + proc_num);
-    mem[ptp_addr] = pt_page;
-
-    // Allocate data pages for the new process
+    // Allocate data pages
     for (int i = 0; i < page_count; i++) {
-        int data_page = 0;
-        for (int j = 1; j < PAGE_COUNT; j++) {
-            int addr = get_address(j, 0);
-            if (mem[addr] == 0) {
-                mem[addr] = 1;  // Mark the page as allocated
-                data_page = j;
-                break;
-            }
+        int new_page = AllocatePage();
+
+        // Check if allocation failed
+        if (new_page == -1) {
+            printf("OOM: proc %d: data page\n", proc_num);
+
         }
 
-        // Check that we found a page for the data
-        assert(data_page != 0);
-
-        // Map the data page into the new process's page table
-        int page_table_entry = i;
-        int page_table_entry_addr = get_address(pt_page, page_table_entry);
-        mem[page_table_entry_addr] = data_page;
+        // Map virtual page i to physical page new_page in the page table
+        int pt_addr = GetAddress(page_table, i);
+        mem[pt_addr] = new_page;
     }
 }
 
-
-//
-// Print the free page map
-//
-// Don't modify this
-//
 void print_page_free_map(void)
 {
     printf("--- PAGE FREE MAP ---\n");
@@ -113,7 +107,6 @@ void print_page_free_map(void)
             putchar('\n');
     }
 }
-
 //
 // Print the address map from virtual pages to physical
 //
